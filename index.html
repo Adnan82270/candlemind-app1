@@ -1,0 +1,234 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#070b16"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><title>CandleMind AI</title>
+<style>
+:root{--bg:#070b16;--card:#0f1730;--tx:#e8eeff;--mut:#8a97b8;--ac:#22d3ee;--up:#22c55e;--dn:#ef4444;--vi:#8b5cf6;--bd:#1e2a4d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root[data-theme="light"]{--bg:#f2f5fc;--card:#fff;--tx:#0d1530;--mut:#5a6685;--bd:#d6ddf0}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:76px;background:radial-gradient(600px 300px at 50% -50px,rgba(139,92,246,.25),transparent),var(--bg)}
+main{max-width:560px;margin:auto;padding:14px}
+h1{font-size:18px;margin:0}h2{font-size:15px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.mut{color:var(--mut);font-size:13px}.badge{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--vi);color:var(--vi)}
+.warn{border-color:#f59e0b;color:#f59e0b}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;border:0;color:var(--mut);padding:12px 2px;font-size:12px;min-height:48px}
+nav button.on{color:var(--ac);font-weight:700}
+#go{display:block;margin:18px auto;width:170px;height:170px;border-radius:50%;border:0;color:#fff;font-weight:800;font-size:18px;letter-spacing:1px;background:conic-gradient(from 0deg,var(--ac),var(--vi),var(--ac));position:relative;box-shadow:0 0 40px rgba(34,211,238,.35)}
+#go::after{content:"";position:absolute;inset:8px;border-radius:50%;background:var(--card);z-index:0}
+#go span{position:relative;z-index:1}#go.busy{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.sig{text-align:center;font-size:34px;font-weight:900;padding:18px;border-radius:16px;margin:8px 0}
+.UP{background:rgba(34,197,94,.12);color:var(--up);box-shadow:0 0 28px rgba(34,197,94,.35)}.DOWN{background:rgba(239,68,68,.12);color:var(--dn);box-shadow:0 0 28px rgba(239,68,68,.35)}
+.NO{background:rgba(138,151,184,.12);color:var(--mut)}.NA{background:rgba(245,158,11,.12);color:#f59e0b;font-size:24px}
+.bar{height:10px;border-radius:9px;background:var(--bd);overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--vi),var(--ac))}
+label{display:block;margin:10px 0 4px;font-size:13px;color:var(--mut)}
+select,input{width:100%;padding:11px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:15px}
+.btn{padding:11px 14px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);min-height:44px}
+.btn.p{background:var(--vi);border:0;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:6px 4px;border-bottom:1px solid var(--bd);text-align:left}
+.ok{color:var(--up)}.bad{color:var(--dn)}canvas{width:100%;height:300px;display:block}
+ul{margin:6px 0;padding-left:18px}.scroll{overflow-x:auto}
+</style></head><body>
+<main id="m"></main>
+<nav id="nav"></nav>
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const PAIRS={"EUR/USD":1.085,"GBP/USD":1.27,"USD/JPY":150.2,"AUD/USD":.655,"USD/CAD":1.36,"USD/CHF":.89,"NZD/USD":.6};
+const TFS=[5,10,15,30,60,120,300,900],EXPS=[5,10,15,30,60,120,300];
+const fmtT=s=>s<60?s+"s":s/60+"m";
+const L={en:{an:"Analyze",ch:"Chart",hi:"History",bt:"Backtest",se:"Settings",ab:"Status",go:"ANALYZE"},ur:{an:"Tajziya",ch:"Chart",hi:"Record",bt:"Backtest",se:"Settings",ab:"Halat",go:"TAJZIYA"}};
+const DEF={lang:"en",theme:"dark",pair:"EUR/USD",tf:60,exp:60,mode:"balanced",minStr:20,n:200,src:"live",maxDaily:50,vib:true,refresh:0,api:"",payout:85,autoLive:true};
+let S=Object.assign({},DEF,(()=>{try{return JSON.parse(localStorage.getItem("cm_s"))||{}}catch(e){return {}}})());
+let H=(()=>{try{return JSON.parse(localStorage.getItem("cm_h"))||[]}catch(e){return []}})();
+const saveS=()=>{try{localStorage.setItem("cm_s",JSON.stringify(S))}catch(e){}};
+const saveH=()=>{try{localStorage.setItem("cm_h",JSON.stringify(H))}catch(e){}};
+let tab="an",last=null,msg="",zoom=80,timer=null;
+
+/* ---- Data adapter. Only "demo" is implemented. Live adapter must be server-side (keys never in browser). ---- */
+function hsh(x){x=Math.imul(x^x>>>15,2246822507);x=Math.imul(x^x>>>13,3266489909);return(x^x>>>16)>>>0}
+function sh(s){let h=7;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function ret(pair,tf,i){const s=sh(pair+tf),u=k=>hsh(i*7+k+s)/4294967296,g=(u(1)+u(2)+u(3)+u(4)-2)*1.732;return PAIRS[pair]*1e-4*Math.sqrt(tf/5)*(g+.5*Math.sin(i/45))}
+function getCandles(pair,tf,n){
+ if(S.src!=="demo"){const c=CACHE[pair+tf];if(!c)throw new Error("No live data loaded");return c.slice(-n)}
+ const end=Math.floor(Date.now()/1000/tf)-1,a=Math.floor(end/4000)*4000;let p=PAIRS[pair],out=[];
+ for(let i=a;i<=end;i++){const o=p,r=ret(pair,tf,i),c=o+r,w=Math.abs(ret(pair,tf,i+99999))*.5;p=c;out.push({t:i*tf*1000,idx:i,o,h:Math.max(o,c)+w,l:Math.min(o,c)-w,c})}
+ if(out.length<n)throw new Error("Insufficient candles ("+out.length+"/"+n+")");
+ return out.slice(-n)}
+const CACHE={},LIVE_TFS=[60,300,900];let META=null;
+async function load(pair,tf,n,fresh){
+ if(S.src==="demo")return getCandles(pair,tf,n);
+ if(!LIVE_TFS.includes(tf))throw new Error("Unsupported timeframe for live provider ("+fmtT(tf)+"). Supported: 1m, 5m, 15m.");
+ META=null;let j;try{j=await api("/api/candles?pair="+encodeURIComponent(pair)+"&tf="+tf+"&n="+Math.min(500,n)+(fresh?"&fresh=1":""))}catch(e){throw new Error("Data provider error: "+e.message)}
+ const c=j.candles;if(!Array.isArray(c)||c.length<60)throw new Error("Provider returned too few candles");
+ const IVN={60:"1min",300:"5min",900:"15min"};
+ if(!j.provider||String(j.symbol).toUpperCase()!==pair||j.interval!==IVN[tf]||!(j.supportedIntervals||[]).includes(IVN[tf]))throw new Error("Provider response mismatch (symbol "+j.symbol+", interval "+j.interval+"); expected "+pair+" "+IVN[tf]);
+ for(let i=0;i<c.length;i++){const x=c[i];if(![x.t,x.o,x.h,x.l,x.c].every(Number.isFinite)||x.h<Math.max(x.o,x.c)||x.l>Math.min(x.o,x.c))throw new Error("Invalid candle data");if(i&&x.t<=c[i-1].t)throw new Error("Candles out of order")}
+ if(j.latestT!==c.at(-1).t)throw new Error("Latest timestamp mismatch");
+ for(let i=Math.max(1,c.length-100);i<c.length;i++)if(c[i].t-c[i-1].t>5*tf*1000)throw new Error("Gap in candles near "+new Date(c[i].t).toISOString());
+ c.forEach(x=>x.idx=Math.round(x.t/(tf*1000)));CACHE[pair+tf]=c;META={provider:j.provider,symbol:j.symbol,interval:j.interval,exchange:j.exchange||"",latest:c.at(-1).t,at:Date.now(),n:c.length,pair,tf};lastErr="";return c}
+async function evalLive(){let ch=0;const keys=[...new Set(H.filter(h=>h.src==="LIVE"&&!h.res&&h.dir!=="NO TRADE").map(h=>h.pair+"|"+h.tf))];
+ for(const k of keys){const[p,tf]=k.split("|");let c;try{c=await load(p,+tf,300)}catch(e){continue}
+  const m=new Map(c.map(x=>[x.t,x]));
+  for(const h of H){if(h.src!=="LIVE"||h.res||h.dir==="NO TRADE"||h.pair!==p||h.tf!==+tf)continue;const a=m.get(h.t),b=m.get(h.t+h.k*h.tf*1000);if(!a||!b)continue;const d=b.c-a.c;h.res=Math.abs(d)<1e-9?"tie":((d>0)===(h.dir==="UP")?"correct":"incorrect");ch=1}}
+ if(ch)saveH();return ch}
+function paper(rows){const g={};for(const h of rows)if(h.res){const o=g[h.src]=g[h.src]||{c:0,i:0,t:0,u:0};h.res==="correct"?(o.c++,o.u+=(h.payout||85)/100):h.res==="incorrect"?(o.i++,o.u-=1):o.t++}
+ return`<div class="card"><h2>Paper trading / forward test</h2><p class="mut">Every UP/DOWN signal is logged as a 1-unit paper trade. No real trades are placed. Sources are never mixed.</p><table><tr><th>Source</th><th>Trades</th><th>W/L/T</th><th>Net units</th></tr>${Object.entries(g).map(([s,o])=>`<tr><td>${s}${s==="LIVE"?" (forward test)":""}</td><td>${o.c+o.i+o.t}</td><td>${o.c}/${o.i}/${o.t}</td><td>${o.u.toFixed(2)}</td></tr>`).join("")||"<tr><td colspan=4 class=mut>No evaluated signals yet</td></tr>"}</table></div>`}
+const ON_ART=()=>/claude\.ai|claudeusercontent|claude\.site/.test(location.hostname||"");
+async function api(path){
+ const base=S.api||"",url=base+path;let r;
+ try{r=await fetch(url,{cache:"no-store"})}catch(e){
+  if(ON_ART())throw new Error("This page is running as a Claude Artifact. Artifacts are static pages: they cannot host a backend and their security policy blocks requests to other sites, so live data can never load here. Deploy server.js + index.html to your own HTTPS host and open the app there.");
+  if(location.protocol==="file:"&&!base)throw new Error("Page opened from a file: no backend at this address. Run server.js and open http://localhost:3000.");
+  if(location.protocol==="https:"&&base.startsWith("http:"))throw new Error("Mixed content: this HTTPS page cannot call "+base+". Use an https:// Backend URL.");
+  throw new Error("Network failure calling "+url+" ("+e.message+"). Possible causes: server not running or not deployed, wrong Backend URL, or CORS blocked (the browser cannot say which; set ALLOWED_ORIGIN="+(location.origin||"<this page's origin>")+" on the server).")}
+ let j=null;try{j=await r.json()}catch(e){}
+ if(!j)throw new Error("HTTP "+r.status+" from "+url+" with no JSON body: no CandleMind backend answers at this address.");
+ if(!r.ok)throw new Error("HTTP "+r.status+": "+(j.error||"backend error"));
+ return j}
+let busy=false,failAt=0,lastErr="",SJ=null;
+function conn(){if(S.src==="demo")return["DEMO","#8b5cf6"];if(lastErr)return["OFFLINE","#ef4444"];if(!META||META.pair!==S.pair||META.tf!==S.tf)return["NO DATA","#ef4444"];return Date.now()-META.latest>3*S.tf*1000||Date.now()-META.at>3*S.tf*1000?["STALE","#f59e0b"]:["LIVE","#22c55e"]}
+function liveTick(){if(S.src!=="live"||!S.autoLive||busy||document.hidden||S.exp%S.tf||!LIVE_TFS.includes(S.tf)||Date.now()-failAt<15000)return;
+ const want=Math.floor((Date.now()-8000)/(S.tf*1000))-1;
+ if(H.some(h=>h.pair===S.pair&&h.tf===S.tf&&h.exp===S.exp&&h.idx===want))return;analyze()}
+let VO="";async function vfy(){VO="checking…";render();try{const j=await api("/api/verify?pair="+encodeURIComponent(S.pair)+"&tf="+S.tf);VO=JSON.stringify(j,null,1)}catch(e){VO="unreachable: "+e.message}render()}
+let ST="";async function chk(){ST="checking…";render();try{const j=await api("/api/status");SJ=j;lastErr=j.configured?"":"Backend reachable but TWELVEDATA_API_KEY is not set on the server";ST=(j.configured?"connected · "+j.provider+" · last OK "+(j.lastOk||"never"):"reachable, PROVIDER KEY MISSING")}catch(e){ST="unreachable: "+e.message;lastErr=e.message}render()}
+/* ---- Indicators ---- */
+const ema=(a,p)=>{const k=2/(p+1);let e=a[0];return a.map(v=>e=v*k+e*(1-k))};
+function wilder(a,p){let v=a.slice(0,p).reduce((x,y)=>x+y,0)/p;const o=[v];for(let i=p;i<a.length;i++){v=(v*(p-1)+a[i])/p;o.push(v)}return o}
+function ind(c){
+ const cl=c.map(x=>x.c),tr=[],pd=[],md=[];
+ for(let i=1;i<c.length;i++){const u=c[i].h-c[i-1].h,d=c[i-1].l-c[i].l;tr.push(Math.max(c[i].h-c[i].l,Math.abs(c[i].h-c[i-1].c),Math.abs(c[i].l-c[i-1].c)));pd.push(u>d&&u>0?u:0);md.push(d>u&&d>0?d:0)}
+ const A=wilder(tr,14),P=wilder(pd,14),M=wilder(md,14),dx=A.map((a,i)=>{const pi=100*P[i]/a,mi=100*M[i]/a;return 100*Math.abs(pi-mi)/(pi+mi||1)}),adx=wilder(dx,14).pop();
+ const g=cl.slice(1).map((v,i)=>v-cl[i]);let ag=0,al=0;for(let i=0;i<14;i++){ag+=Math.max(g[i],0)/14;al+=Math.max(-g[i],0)/14}
+ for(let i=14;i<g.length;i++){ag=(ag*13+Math.max(g[i],0))/14;al=(al*13+Math.max(-g[i],0))/14}
+ const rsi=100-100/(1+ag/(al||1e-12)),e12=ema(cl,12),e26=ema(cl,26),ml=e12.map((v,i)=>v-e26[i]),sg=ema(ml,9),hist=ml.at(-1)-sg.at(-1);
+ const w=cl.slice(-20),mean=w.reduce((x,y)=>x+y,0)/20,sd=Math.sqrt(w.reduce((x,y)=>x+(y-mean)**2,0)/20),up=mean+2*sd,lo=mean-2*sd;
+ const hh=Math.max(...c.slice(-14).map(x=>x.h)),ll=Math.min(...c.slice(-14).map(x=>x.l));
+ return{e9:ema(cl,9).at(-1),e21:ema(cl,21).at(-1),e50:ema(cl,50).at(-1),atr:A.at(-1),adx,rsi,hist,up,lo,pb:(cl.at(-1)-lo)/((up-lo)||1e-12),k:100*(cl.at(-1)-ll)/((hh-ll)||1e-12),bbw:(up-lo)/mean,price:cl.at(-1)}}
+/* ---- Rule-based engine: correlated indicators grouped into 3 families, weighted by regime (not one vote each). ---- */
+function signal(c){
+ if(c.length<60)return{dir:"NO",why:"Need at least 60 candles"};
+ const I=ind(c),A=I.atr||1e-9,th=Math.tanh;
+ const trend=th(((I.e9-I.e21)+(I.e21-I.e50))/(A*1.5)),mom=th(I.hist/(A*.25))*.6+th((I.rsi-50)/18)*.4,mr=-th((I.pb-.5)*3)*.5-th((I.k-50)/30)*.5;
+ const tr=I.adx>=22,w=tr?[.5,.3,.2]:[.15,.25,.6],rc=c.slice(-100,-1);
+ const swH=rc.filter((x,i)=>i>1&&i<rc.length-2&&x.h>=Math.max(rc[i-1].h,rc[i-2].h,rc[i+1].h,rc[i+2].h)).map(x=>x.h),swL=rc.filter((x,i)=>i>1&&i<rc.length-2&&x.l<=Math.min(rc[i-1].l,rc[i-2].l,rc[i+1].l,rc[i+2].l)).map(x=>x.l);
+ const px=I.price,res=swH.filter(v=>v>px).sort((a,b)=>a-b)[0],sup=swL.filter(v=>v<px).sort((a,b)=>b-a)[0],nearR=res!==undefined&&res-px<.5*A,nearS=sup!==undefined&&px-sup<.5*A;
+ const l1=c.at(-1),p1=c.at(-2),bull=l1.c>l1.o&&p1.c<p1.o&&l1.c>=p1.o&&l1.o<=p1.c,bear=l1.c<l1.o&&p1.c>p1.o&&l1.c<=p1.o&&l1.o>=p1.c,pa=bull?1:bear?-1:0;
+ let score=w[0]*trend+w[1]*mom+w[2]*mr+.1*pa;if(nearR&&score>0)score*=.5;if(nearS&&score<0)score*=.5;const str=Math.abs(score)*100;
+ const thr=Math.max({conservative:35,balanced:22,aggressive:12}[S.mode],S.minStr),R={I,score,str,trend,mom,mr,res,sup,pa,nearR,nearS,regime:tr?"Trending":"Ranging"};
+ if(tr&&Math.sign(trend)!==Math.sign(mom)&&Math.min(Math.abs(trend),Math.abs(mom))>.3)return{...R,dir:"NO",why:"Conflicting trend and momentum"};
+ if(I.adx<12&&S.mode!=="aggressive")return{...R,dir:"NO",why:"Consolidation (ADX below 12)"};
+ if(str<thr)return{...R,dir:"NO",why:"Signal strength "+str.toFixed(0)+"% below threshold "+thr+"%"};
+ return{...R,dir:score>0?"UP":"DOWN",why:""}}
+/* ---- Analyze ---- */
+const kexp=()=>Math.max(1,Math.round(S.exp/S.tf));
+function analyze(){
+ if(busy)return;busy=true;const b=$("#go")||{classList:{add(){},remove(){}}};b.classList.add("busy");msg="";
+ setTimeout(async()=>{try{if(S.exp%S.tf)throw new Error("Expiry "+fmtT(S.exp)+" is not a multiple of the "+fmtT(S.tf)+" candle, so the outcome cannot be measured. Choose an expiry that is a multiple of the candle timeframe.");await load(S.pair,S.tf,Math.max(60,S.n),true);
+  const today=new Date().toDateString(),cnt=H.filter(h=>new Date(h.ts).toDateString()===today).length;
+  if(cnt>=S.maxDaily)throw new Error("Daily analysis limit reached ("+S.maxDaily+").");
+  const c=getCandles(S.pair,S.tf,Math.max(60,S.n)),lc=c.at(-1);
+  if(Date.now()-lc.t>S.tf*1000*3)throw new Error("STALE: latest candle too old.");
+  const r=signal(c);r.price=lc.c;r.t=lc.t;r.idx=lc.idx;r.meta=S.src==="demo"?{provider:"SIMULATED demo",symbol:S.pair,interval:fmtT(S.tf)}:META;last=r;
+  const dup=H.find(h=>h.pair===S.pair&&h.tf===S.tf&&h.exp===S.exp&&h.idx===lc.idx);if(dup){msg="Candle already analyzed. Next candle in ~"+Math.max(0,Math.ceil((lc.t+2*S.tf*1000-Date.now())/1000))+"s.";b.classList.remove("busy");busy=false;render();return}
+  H.unshift({ts:Date.now(),pair:S.pair,tf:S.tf,exp:S.exp,dir:r.dir==="NO"?"NO TRADE":r.dir,price:lc.c,id:S.pair+"|"+S.tf+"|"+S.exp+"|"+lc.idx,idx:lc.idx,t:lc.t,k:kexp(),payout:S.payout,src:S.src==="demo"?"DEMO (simulated)":"LIVE",model:"rules-v0.1 (uncalibrated)",res:null});
+  H=H.slice(0,300);saveH();if(S.vib&&navigator.vibrate)navigator.vibrate(r.dir==="NO"?40:[60,40,60]);
+ }catch(e){last={dir:"NA",why:e.message};failAt=Date.now();lastErr=e.message}
+ b.classList.remove("busy");busy=false;render()},500)}
+function evalHist(){let ch=0;const nowIdx=h=>Math.floor(Date.now()/1000/h.tf)-1;
+ for(const h of H){if(h.res||h.dir==="NO TRADE"||h.src==="LIVE")continue;if(nowIdx(h)<h.idx+h.k)continue;
+  let d=0;for(let i=h.idx+1;i<=h.idx+h.k;i++)d+=ret(h.pair,h.tf,i);
+  h.res=Math.abs(d)<1e-12?"tie":((d>0)===(h.dir==="UP")?"correct":"incorrect");ch=1}
+ if(ch)saveH()}
+/* ---- Backtest (walk-forward; no future data in each signal) ---- */
+let BT=null;
+async function backtest(){
+ try{if(S.exp%S.tf)throw new Error("Expiry is not a multiple of the candle timeframe");const N=+$("#btn").value,k=kexp(),pay=+$("#bpay").value/100;
+  const c=await load(S.pair,S.tf,Math.min(N,S.src==="demo"?3500:500)),rows=[];let cor=0,inc=0,tie=0,nt=0,eq=0,pk=0,dd=0;const bins={};
+  for(let i=59;i<c.length-k;i++){const s=signal(c.slice(Math.max(0,i-199),i+1));
+   if(s.dir==="NO"){nt++;continue}
+   const d=c[i+k].c-c[i].c,res=Math.abs(d)<1e-12?"tie":((d>0)===(s.dir==="UP")?"correct":"incorrect");
+   if(res==="correct"){cor++;eq+=pay}else if(res==="incorrect"){inc++;eq-=1}else tie++;
+   pk=Math.max(pk,eq);dd=Math.max(dd,pk-eq);const b=Math.min(4,Math.floor(s.str/20));bins[b]=bins[b]||[0,0];bins[b][1]++;if(res==="correct")bins[b][0]++;
+   rows.push([new Date(c[i].t).toISOString(),S.pair,fmtT(S.tf),fmtT(S.exp),s.dir,s.str.toFixed(1),c[i].c.toFixed(5),c[i+k].c.toFixed(5),res])}
+  BT={cor,inc,tie,nt,rows,eq,dd,pay,bins,k,N:c.length}}catch(e){BT={err:e.message}}render()}
+function csv(){const r=[["time","pair","tf","expiry","pred","strength","entry","exit","result"],...BT.rows];
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([r.map(x=>x.join(",")).join("\n")],{type:"text/csv"}));a.download="backtest_"+S.src+".csv";a.click()}
+/* ---- Chart ---- */
+async function drawChart(){const cv=$("#cv");if(!cv)return;let c;try{c=await load(S.pair,S.tf,Math.max(60,S.n))}catch(e){const g=cv.getContext("2d");cv.width=cv.clientWidth;cv.height=300;g.fillStyle="#f59e0b";g.font="14px sans-serif";g.fillText("DATA UNAVAILABLE: "+e.message.slice(0,50),8,24);return}
+ const dpr=devicePixelRatio||1,W=cv.clientWidth,Hh=cv.clientHeight;cv.width=W*dpr;cv.height=Hh*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);
+ const v=c.slice(-zoom),cs=getComputedStyle(document.documentElement),up=cs.getPropertyValue("--up"),dn=cs.getPropertyValue("--dn"),mut=cs.getPropertyValue("--mut");
+ const hi=Math.max(...v.map(x=>x.h)),lo=Math.min(...v.map(x=>x.l)),y=p=>8+(hi-p)/(hi-lo||1)*(Hh-16),bw=W/v.length;
+ v.forEach((x,i)=>{const cx=i*bw+bw/2,col=x.c>=x.o?up:dn;g.strokeStyle=g.fillStyle=col;g.beginPath();g.moveTo(cx,y(x.h));g.lineTo(cx,y(x.l));g.stroke();g.fillRect(cx-bw*.35,Math.min(y(x.o),y(x.c)),bw*.7,Math.max(1,Math.abs(y(x.o)-y(x.c))))});
+ for(const[p,col]of[[9,"#22d3ee"],[21,"#8b5cf6"],[50,"#f59e0b"]]){const e=ema(c.map(x=>x.c),p).slice(-zoom);g.strokeStyle=col;g.beginPath();e.forEach((q,i)=>i?g.lineTo(i*bw+bw/2,y(q)):g.moveTo(bw/2,y(q)));g.stroke()}
+ g.fillStyle=mut;g.font="11px sans-serif";g.fillText(hi.toFixed(5),4,12);g.fillText(lo.toFixed(5),4,Hh-4)}
+/* ---- Views ---- */
+const t=k=>L[S.lang][k];
+const opt=(a,v,f=x=>x)=>a.map(x=>`<option value="${x}" ${x==v?"selected":""}>${f(x)}</option>`).join("");
+function vAn(){
+ let p="";try{if(S.src!=="demo"&&!(META&&META.pair===S.pair&&META.tf===S.tf))throw 0;const c=getCandles(S.pair,S.tf,60);p=c.at(-1).c.toFixed(S.pair.includes("JPY")?3:5)}catch(e){p=S.src==="demo"?"—":"DATA UNAVAILABLE"}
+ let r="";
+ if(last){const I=last.I;
+  if(last.dir==="NA")r=`<div class="sig NA">DATA UNAVAILABLE</div><p class="mut">${last.why}${/TWELVEDATA_API_KEY/.test(last.why)?" To fix: create a Twelve Data API key and start the server with TWELVEDATA_API_KEY=your_key node server.js.":""}</p>`;
+  else{const lab=last.dir==="NO"?"NO TRADE":last.dir;
+   r=`<div class="sig ${last.dir}">${lab==="UP"?"▲ ":lab==="DOWN"?"▼ ":""}${lab}</div>
+   <div class="row mut"><span>Signal strength (not a win probability)</span><b>${last.str.toFixed(0)}%</b></div><div class="bar"><i style="width:${Math.min(100,last.str)}%"></i></div>
+   <p><span class="badge warn">Experimental — not calibrated</span></p>
+   <p class="mut">P(up) / P(down): not shown until calibrated out-of-sample.</p>
+   ${last.why?`<p><b>Why no trade:</b> ${last.why}</p>`:""}
+   <table><tr><td>Latest close</td><td>${last.price.toFixed(S.pair.includes("JPY")?3:5)}</td><td>Candle open (UTC)</td><td>${new Date(last.t).toISOString().replace("T"," ").slice(0,19)}</td></tr><tr><td>Source</td><td colspan=3>${last.meta?last.meta.provider+" · "+last.meta.symbol+" · "+last.meta.interval:"unknown"}</td></tr>
+   <tr><td>Timeframe</td><td>${fmtT(S.tf)}</td><td>Expiry</td><td>${fmtT(S.exp)} (${kexp()} candle${kexp()>1?"s":""})</td></tr>
+   <tr><td>Data age</td><td colspan=3>${Math.round((Date.now()-last.t-S.tf*1000)/1000)}s since candle close</td></tr><tr><td>Regime</td><td>${last.regime}</td><td>Refresh after</td><td>${new Date(last.t+S.tf*2000).toLocaleTimeString()}</td></tr></table>
+   <h2 style="margin-top:10px">Evidence</h2><ul><li>Trend (EMA 9/21/50): ${last.trend.toFixed(2)} · ADX ${I.adx.toFixed(0)}</li><li>Momentum (MACD/RSI ${I.rsi.toFixed(0)}): ${last.mom.toFixed(2)}</li><li>Mean-reversion (BB %B ${I.pb.toFixed(2)}, Stoch ${I.k.toFixed(0)}): ${last.mr.toFixed(2)}</li><li>Price action: ${last.pa>0?"bullish engulfing":last.pa<0?"bearish engulfing":"no engulfing pattern"} · ATR ${I.atr.toFixed(5)}</li><li>Support ${last.sup?last.sup.toFixed(5):"none found"} · Resistance ${last.res?last.res.toFixed(5):"none found"}${last.nearR||last.nearS?" · price is near a level, signal halved":""}</li></ul>
+   <h2>How it could fail</h2><ul><li>Short-horizon moves are close to random; simulated data here has no real edge claim.</li><li>Regime can flip within one candle; news and spread are not modeled.</li></ul>`}}
+ return`<div class="card"><div class="row"><div><h1>CandleMind AI</h1><span class="mut">${S.pair} · ${fmtT(S.tf)} candles · ${fmtT(S.exp)} expiry</span></div><div style="text-align:right"><b style="font-size:20px">${p}</b><br><span class="badge warn">${S.src==="demo"?"SIMULATED DEMO":META&&META.pair===S.pair&&META.tf===S.tf?"LIVE DATA · "+META.provider+" · "+META.symbol+" · "+META.interval:"DATA UNAVAILABLE"}</span></div></div>
+ <div class="row"><span class="badge" style="color:${conn()[1]};border-color:${conn()[1]}">● ${conn()[0]}</span><span class="mut">Last data update: ${META&&S.src!=="demo"?new Date(META.at).toLocaleTimeString():"—"}</span></div><button id="go" onclick="analyze()"><span>${t("go")}</span></button>${r}</div>
+ ${msg?`<p><span class="badge warn">${msg}</span></p>`:""}<p class="mut">Decision-support only. Predictions are uncertain; nothing here is financial advice or a guarantee. No trades are placed.</p>`}
+function vCh(){return`<div class="card"><div class="row"><h2>${S.pair} ${fmtT(S.tf)}</h2><span class="badge warn">${S.src==="demo"?"SIMULATED":"LIVE"}</span></div><canvas id="cv"></canvas>
+<div class="row" style="margin-top:8px"><button class="btn" onclick="zoom=Math.max(20,zoom-20);render()">Zoom +</button><button class="btn" onclick="zoom=Math.min(S.n,zoom+20);render()">Zoom −</button><select style="width:auto" onchange="S.tf=+this.value;saveS();render()">${opt(TFS,S.tf,fmtT)}</select></div>
+<p class="mut">EMA 9 cyan · 21 violet · 50 amber</p></div>`}
+function vHi(){evalHist();if(S.src==="live"&&H.some(h=>h.src==="LIVE"&&!h.res&&h.dir!=="NO TRADE"))evalLive().then(c=>c&&render());const f=$("#hf")?$("#hf").value:"";const rows=H.filter(h=>!f||h.pair===f);
+ const done=rows.filter(h=>h.res),pen=rows.filter(h=>!h.res&&h.dir!=="NO TRADE"),nt=rows.filter(h=>h.dir==="NO TRADE"),c=done.filter(h=>h.res==="correct").length,i=done.filter(h=>h.res==="incorrect").length;
+ const tb=a=>`<div class="scroll"><table><tr><th>Time</th><th>Pair</th><th>TF/Exp</th><th>Pred</th><th>Price</th><th>Result</th></tr>${a.map(h=>`<tr><td>${new Date(h.ts).toLocaleString()}</td><td>${h.pair}</td><td>${fmtT(h.tf)}/${fmtT(h.exp)}</td><td>${h.dir}</td><td>${h.price.toFixed(5)}</td><td class="${h.res==="correct"?"ok":h.res==="incorrect"?"bad":""}">${h.res||(h.dir==="NO TRADE"?"—":"pending")}</td></tr>`).join("")||"<tr><td colspan=6 class=mut>None</td></tr>"}</table></div>`;
+ return`<div class="card"><h2>Signal history</h2><select id="hf" onchange="render()"><option value="">All pairs</option>${Object.keys(PAIRS).map(p=>`<option ${p===f?"selected":""}>${p}</option>`).join("")}</select>
+ <p class="mut">Evaluated: ${done.length} · correct ${c} · incorrect ${i} · accuracy ${i+c?(100*c/(i+c)).toFixed(1)+"% (n="+(i+c)+", ties excluded)":"n/a"}. Source: simulated demo.</p></div>
+ ${paper(rows)}<div class="card"><h2>Pending</h2>${tb(pen)}</div><div class="card"><h2>Completed</h2>${tb(done)}</div><div class="card"><h2>No-trade</h2>${tb(nt)}</div>
+ <button class="btn" onclick="if(confirm('Clear history?')){H=[];saveH();render()}">Clear history</button>`}
+function vBt(){let o="";if(BT&&BT.err)o=`<p class="bad">${BT.err}</p>`;else if(BT){const e=BT.cor+BT.inc;
+ o=`<table><tr><td>Candles</td><td>${BT.N}</td><td>No-trade</td><td>${BT.nt}</td></tr><tr><td>Predictions</td><td>${e+BT.tie}</td><td>Ties</td><td>${BT.tie}</td></tr><tr><td>Correct</td><td>${BT.cor}</td><td>Incorrect</td><td>${BT.inc}</td></tr>
+ <tr><td>Directional accuracy</td><td colspan=3>${e?(100*BT.cor/e).toFixed(1)+"%":"n/a"} (denominator ${e}, ties excluded)</td></tr>
+ <tr><td>Breakeven at ${(BT.pay*100).toFixed(0)}% payout</td><td colspan=3>${(100/(1+BT.pay)).toFixed(1)}%</td></tr>
+ <tr><td>Net units (1 per trade)</td><td>${BT.eq.toFixed(1)}</td><td>Max drawdown</td><td>${BT.dd.toFixed(1)}</td></tr></table>
+ <h2 style="margin-top:10px">Calibration (strength bucket → hit rate)</h2><table>${Object.entries(BT.bins).map(([b,v])=>`<tr><td>${b*20}-${b*20+20}%</td><td>${v[1]} trades</td><td>${(100*v[0]/v[1]).toFixed(1)}%</td></tr>`).join("")}</table>
+ <button class="btn" style="margin-top:8px" onclick="csv()">Export CSV</button>`}
+ return`<div class="card"><h2>Backtest</h2><span class="badge warn">Historical · ${S.src==="demo"?"SIMULATED data":"provider data (max 500 candles)"}</span>
+ <label>Lookback candles (max 3500)</label><input id="btn" type="number" value="1500" min="200" max="3500">
+ <label>Payout %</label><input id="bpay" type="number" value="85" min="1" max="100"><p class="mut">Uses ${S.pair}, ${fmtT(S.tf)}, expiry ${fmtT(S.exp)}. Walk-forward: each signal sees only past candles.</p>
+ <button class="btn p" onclick="backtest()">Run backtest</button>${o}</div><p class="mut">Results on simulated data say nothing about real markets. Paper-trading and live forward-test sections are not implemented.</p>`}
+function vSe(){return`<div class="card"><h2>Trading settings</h2>
+ <label>Pair</label><select onchange="S.pair=this.value;sv()">${opt(Object.keys(PAIRS),S.pair)}<option disabled>OTC pairs: need a dedicated OTC data source</option></select>
+ <label>Candle timeframe</label><select onchange="S.tf=+this.value;sv()">${TFS.map(x=>{const off=S.src!=="demo"&&!LIVE_TFS.includes(x);return`<option value="${x}" ${x==S.tf?"selected":""} ${off?"disabled":""}>${fmtT(x)}${off?" — unavailable live":""}</option>`}).join("")}</select>${S.src!=="demo"?`<p class="mut">Live supports 1m, 5m and 15m. The provider's forex time series has no sub-minute candles, so 5s–30s and 2m need tick data or another feed and are disabled. Demo mode simulates them.</p>`:""}
+ <label>Trade expiry</label><select onchange="S.exp=+this.value;sv()">${opt(EXPS,S.exp,fmtT)}</select>${S.exp%S.tf?`<p class="mut" style="color:#f59e0b">Expiry must be a multiple of the candle timeframe, otherwise Analyze is blocked.</p>`:""}
+ <label>Analysis mode</label><select onchange="S.mode=this.value;sv()">${opt(["conservative","balanced","aggressive"],S.mode)}</select>
+ <label>Minimum signal strength (%)</label><input type="number" min="0" max="90" value="${S.minStr}" onchange="S.minStr=Math.min(90,Math.max(0,+this.value||0));sv()">
+ <label>Candles used (60–500)</label><input type="number" min="60" max="500" value="${S.n}" onchange="S.n=Math.min(500,Math.max(60,+this.value||200));sv()">
+ <label>Max analyses per day</label><input type="number" min="1" max="500" value="${S.maxDaily}" onchange="S.maxDaily=Math.min(500,Math.max(1,+this.value||50));sv()">
+ <label>Auto-refresh (seconds, 0 = off)</label><input type="number" min="0" max="600" value="${S.refresh}" onchange="S.refresh=Math.min(600,Math.max(0,+this.value||0));sv();auto()">
+ <label>Backend URL (blank = same origin)</label><input value="${S.api}" placeholder="https://your-host" onchange="S.api=this.value.trim().replace(/[/]$/,'');sv()"><label>Payout % (paper/backtest)</label><input type="number" min="1" max="100" value="${S.payout}" onchange="S.payout=Math.min(100,Math.max(1,+this.value||85));sv()"><label>Data source</label><select onchange="S.src=this.value;sv()"><option value="demo" ${S.src==="demo"?"selected":""}>Demo (simulated)</option><option value="live" ${S.src==="live"?"selected":""}>Live provider (via backend)</option></select>
+ <label>Language</label><select onchange="S.lang=this.value;sv()"><option value="en">English</option><option value="ur" ${S.lang==="ur"?"selected":""}>Roman Urdu</option></select>
+ <label>Theme</label><select onchange="S.theme=this.value;sv()"><option value="dark">Dark</option><option value="light" ${S.theme==="light"?"selected":""}>Light</option></select>
+ <label><input type="checkbox" style="width:auto" ${S.vib?"checked":""} onchange="S.vib=this.checked;saveS()"> Vibration alert</label><label><input type="checkbox" style="width:auto" ${S.autoLive?"checked":""} onchange="S.autoLive=this.checked;saveS()"> Auto-analyze each new candle (live mode)</label></div>`}
+function vAb(){return`<div class="card"><h2>Data source status</h2><p>Mode: <b>${S.src==="demo"?"Simulated demo data":"Live provider via backend"}</b></p><p>Backend: <b>${ST||"not tested"}</b></p><button class="btn" onclick="chk()">Test connection</button> <button class="btn" onclick="vfy()">Verify ${S.pair} data</button><pre class="mut" style="white-space:pre-wrap;font-size:12px">${VO}</pre>
+ <p class="mut">Demo prices are generated by a deterministic random walk. They are not real quotes and carry no predictive value.</p>
+ <p class="mut">For real data a backend must hold the provider key as a server secret (e.g. PROVIDER_API_KEY, PROVIDER_BASE_URL) and expose validated OHLC/tick endpoints. The included server.js reads TWELVEDATA_API_KEY; Twelve Data forex has no sub-minute candles, so live supports 1m, 5m and 15m only. Quotex OTC prices need an OTC-specific source; forex prices must never stand in for them.</p></div>
+ <div class="card"><h2>Data source</h2><table><tr><td>Backend</td><td>${S.api||(location.origin||"this page")+" (same origin)"}${ON_ART()?" — Claude Artifact: no backend possible here":""}</td></tr><tr><td>Provider</td><td>${S.src==="demo"?"SIMULATED demo":META?META.provider:"—"}</td></tr><tr><td>Connection</td><td>${conn()[0]}</td></tr><tr><td>Live / delayed</td><td>${S.src==="demo"?"Demo (simulated)":META?"Latest candle is "+Math.round((Date.now()-META.latest)/1000)+"s old; true feed delay unknown":"unknown"}</td></tr><tr><td>Latest candle (UTC)</td><td>${META&&S.src!=="demo"?new Date(META.latest).toISOString():"—"}</td></tr><tr><td>Symbol / interval</td><td>${META&&S.src!=="demo"?META.symbol+" / "+META.interval:S.pair}</td></tr><tr><td>Supported intervals</td><td>${SJ?SJ.supportedIntervals.join(", "):"1min, 5min, 15min (press Test connection to confirm)"}</td></tr><tr><td>Last error</td><td>${lastErr||(SJ&&SJ.lastError)||"none"}</td></tr><tr><td>Rate limit</td><td>${SJ?SJ.requestsLastMinute+" provider requests in last 60s · last 429: "+(SJ.lastRateLimitAt||"never"):"press Test connection"}</td></tr></table></div><div class="card"><h2>Model</h2><p>rules-v0.1: EMA 9/21/50, RSI, MACD, Bollinger, ATR, Stochastic, ADX grouped into trend, momentum and mean-reversion families, weighted by regime. No machine learning, no calibration yet, so no probabilities are shown.</p></div>
+ <div class="card"><h2>Risk disclaimer</h2><p>Short-term price direction is highly uncertain. Binary-style trading can lose your entire stake. This tool does not place trades, does not use Quotex credentials, and guarantees nothing.</p></div>`}
+function sv(){saveS();render()}
+function auto(){clearInterval(timer);if(S.refresh>0)timer=setInterval(()=>{if(tab==="an"&&!document.hidden)analyze()},S.refresh*1000)}
+function render(){document.documentElement.dataset.theme=S.theme;
+ $("#nav").innerHTML=["an","ch","hi","bt","se","ab"].map(k=>`<button class="${k===tab?"on":""}" onclick="tab='${k}';render()">${t(k)}</button>`).join("");
+ $("#m").innerHTML={an:vAn,ch:vCh,hi:vHi,bt:vBt,se:vSe,ab:vAb}[tab]();if(tab==="ch")drawChart()}
+addEventListener("resize",()=>tab==="ch"&&drawChart());render();auto();
+setInterval(liveTick,5000);if(S.src==="live")chk();
+if("serviceWorker"in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
