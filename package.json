@@ -1,0 +1,15 @@
+
+{
+  "name": "candlemind-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CandleMind market data backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
